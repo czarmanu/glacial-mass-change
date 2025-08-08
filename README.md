@@ -85,8 +85,8 @@ pip3 install -r requirements.txt
 | `src/config.py`                   | Stores constants such as file paths and URLs                           |
 | `src/utils_netcdf.py`             | Helper functions for NetCDF handling and analysis                      |
 | `src/utils_plot.py`               | Helper functions for plotting                                          |
-| `src/test_file_exists.py`         | Unit test to verify the presence and structure of the NetCDF file.     |
-| `src/test_netcdf_structure.py`    | Unit test to verify the structure and content of the NetCDF file.      |
+| `tests/test_file_exists.py`       | Unit test to verify the presence and structure of the NetCDF file.     |
+| `tests/test_netcdf_structure.py`  | Unit test to verify the structure and content of the NetCDF file.      |
 
 ---
 
