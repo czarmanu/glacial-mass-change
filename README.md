@@ -1,5 +1,5 @@
-![CI](https://github.com/czarmanu/glacial_mass_balance_ts_interview/actions/workflows/github_actions_CI.yml/badge.svg)  
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/czarmanu/glacial_mass_balance_ts_interview/blob/main/LICENSE)  
+![CI](https://github.com/czarmanu/glacial-mass-change/actions/workflows/github_actions_CI.yml/badge.svg)  
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/czarmanu/glacial-mass-change/blob/main/LICENSE)  
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14206902.svg)](https://doi.org/10.5904/wgms-amce-2025-02b)
 
 # Annual mass-change estimates (world’s glaciers, time series)
