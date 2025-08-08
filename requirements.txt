@@ -1,0 +1,6 @@
+requests
+xarray
+matplotlib
+flake8
+pytest
+netCDF4
