@@ -28,8 +28,8 @@ global-gridded-annual-glacier-mass-change.nc4
   - `lon`: Longitude (WGS 84 – EPSG:4326)
 
 - **Data variables**:
-  - `glacier_mass_change_gt`: Glacier mass change in Gt  
-  - `glacier_mass_change_mwe`: Glacier mass change in m w.e.  
+  - `glacier_mass_change_gt`: Glacier mass change in Gigatons (Gt)  
+  - `glacier_mass_change_mwe`: Glacier mass change in meters water equivalent (m w.e.)  
   - `glacier_area_km2`: Glacier area in km²  
   - `uncertainty_gt`: Glacier mass change uncertainty in Gt  
   - `uncertainty_mwe`: Glacier mass change uncertainty in m w.e.
@@ -84,6 +84,7 @@ pip3 install -r requirements.txt
 | `src/main.py`                     | Orchestrates download, extraction, analysis, plotting                  |
 | `src/config.py`                   | Stores constants such as file paths and URLs                           |
 | `src/utils_netcdf.py`             | Helper functions for NetCDF handling and analysis                      |
+| `src/utils_plot.py`               | Helper functions for plotting                                          |
 | `src/test_file_exists.py`         | Unit test to verify the presence and structure of the NetCDF file.     |
 | `src/test_netcdf_structure.py`    | Unit test to verify the structure and content of the NetCDF file.      |
 
