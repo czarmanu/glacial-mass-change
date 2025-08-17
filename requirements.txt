@@ -1,6 +1,9 @@
 requests
-xarray
-matplotlib
+pandas>=2.0
+numpy>=1.23
+xarray>=2024.1.0
+netCDF4
+cftime
+matplotlib>=3.7
 flake8
 pytest
-netCDF4

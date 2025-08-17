@@ -3,10 +3,12 @@
 # *****************************************************************************
 
 # Purpose:
-# 1) Download the netCDF (.nc4) data from Dussaillant et al. (2025)
-# 2) Unzip it
-# 3) Manipulate some data
-# 4) Plot results in figures and tables
+# Provide utilities for:
+# 1) Downloading the WGMS NetCDF dataset ZIP
+# 2) Extracting the archive
+# 3) Loading the NetCDF (.nc4) file
+# 4) Computing global glacier mass change diagnostics
+# 5) Generating global and regional plots
 
 # Author(s):
 # Manu Tom, 2025-
@@ -17,7 +19,8 @@ import requests
 import logging
 import xarray as xr
 import config
-from utils_plots import plot_global_mass_change
+from pathlib import Path
+from utils_plots import plot_global_mass_change, plot_regional_grid
 
 
 # ............................................................................#
@@ -123,36 +126,82 @@ def load_netcdf_file():
     return ds
 
 
+def compute_time_taken(start):
+    elapsed = time.perf_counter() - start
+    logging.info("Time taken: %.2f seconds.", elapsed)
+
+
 def analyze_and_plot(ds, plot_only=False, summary_only=False):
     """
-    Computes global mean glacier mass change time series,
-    saves summary statistics, and/or generates a time series plot.
+    Compute and visualize glacier mass change metrics.
+
+    Operations:
+    - Aggregate NetCDF fields to compute global annual mass change (Gt),
+      area-weighted global mean mass change (m w.e.), associated
+      uncertainties, and total glacier area.
+    - Generate a global time series plot with ±1σ uncertainty.
+    - Generate a multi-panel regional plot (19 regions, Fig. 10 style).
 
     Args:
         ds (xarray.Dataset): Loaded NetCDF dataset.
-        plot_only (bool): If True, skip summary and only generate plot.
-        summary_only (bool): If True, skip plot and only compute summary.
+        plot_only (bool): If True, generate only plots
+        without any further stats.
+        summary_only (bool): Kept for backwards compatibility, ignored here.
 
     Outputs:
-        - CSV summary statistics saved to config.SUMMARY_FILE
-        - Time series plot saved to config.PLOT_FILE
+        - Global time series figure saved to config.PLOT_FILE
+        - Regional multi-panel figure saved to config.PLOT_FILE_INDIVIDUAL
     """
     logging.info("Analyzing data...")
-    start = time.perf_counter()
 
-    da = ds['glacier_mass_change_gt']
-    df = (
-        da.mean(dim=['lat', 'lon'])
-        .to_dataframe()
-        .reset_index()[['time', 'glacier_mass_change_gt']]
-    )
+    # Data arrays
+    da_gt = ds["glacier_mass_change_gt"]
+    da_mwe = ds["glacier_mass_change_mwe"]
+    da_area = ds["glacier_area_km2"]
+    unc_gt = ds["uncertainty_gt"]
+    unc_mwe = ds["uncertainty_mwe"]
 
-    if not plot_only:
-        df.describe().to_csv(config.SUMMARY_FILE)
-        logging.info(f"Saved summary table to {config.SUMMARY_FILE}")
+    # Aggregations
+    global_gt = da_gt.sum(dim=["lat", "lon"])
+    area_sum = da_area.sum(dim=["lat", "lon"])
+    global_mwe = (da_mwe * da_area).sum(dim=["lat", "lon"]) / area_sum
+    global_area_km2 = area_sum
+
+    # Uncertainty propagation
+    global_unc_gt = (unc_gt ** 2).sum(dim=["lat", "lon"]) ** 0.5
+    weights = da_area / area_sum
+    global_unc_mwe = ((weights ** 2) * (unc_mwe ** 2)).sum(
+        dim=["lat", "lon"]
+    ) ** 0.5
+
+    # Tidy DataFrame
+    df = xr.merge(
+        [
+            global_gt.rename("global_mass_change_gt"),
+            global_unc_gt.rename("global_uncertainty_gt"),
+            global_mwe.rename("global_mass_change_mwe"),
+            global_unc_mwe.rename("global_uncertainty_mwe"),
+            global_area_km2.rename("global_glacier_area_km2"),
+        ]
+    ).to_dataframe().reset_index()
 
     if not summary_only:
-        plot_global_mass_change(df, config.PLOT_FILE)
+        t0 = time.perf_counter()
+        plot_global_mass_change(
+            df, config.PLOT_FILE,
+            value_col="global_mass_change_gt",
+            unc_col="global_uncertainty_gt",
+            y_label="Annual mass change (Gt)"
+            )
+        logging.info("Saved plot to %s. Time taken: %.2f seconds.",
+                     config.PLOT_FILE, time.perf_counter() - t0)
 
-    elapsed = time.perf_counter() - start
-    logging.info(f"Analysis complete. Time taken: {elapsed:.2f} seconds.")
+        # Build and save 19-panel figure (auto-discovers region codes)
+        t0 = time.perf_counter()
+        plot_regional_grid(
+            base_dir=Path(config.CSV_SUBDIR),
+            out_path=Path(config.PLOT_FILE_INDIVIDUAL),
+            ncols=4,
+            )
+        logging.info("Saved plot to %s. Time taken: %.2f seconds.",
+                     config.PLOT_FILE_INDIVIDUAL, time.perf_counter() - t0)
