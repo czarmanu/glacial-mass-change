@@ -24,7 +24,6 @@ import logging
 import os
 from pathlib import Path
 import time
-
 import config
 from utils_csv import build_summary_table
 from utils_netcdf import (
@@ -54,6 +53,8 @@ def main() -> None:
     - --summary-only: only build the summary table, skip plots.
     - --force-download: force re-download and re-extraction of dataset.
     """
+
+    # Initialize command-line argument parser with a description for --help
     parser = argparse.ArgumentParser(
         description="Glacial Mass Balance Time Series Tool"
     )
@@ -61,20 +62,24 @@ def main() -> None:
     # Summary uses CSV inputs; plots use the NetCDF file.
     parser.add_argument(
         "--plot-only",
+        # No need to type --plot-only True — just including the flag is enough
         action="store_true",
-        help="Only generate plots, skip Table-8-like summary.",
+        help="Only generate plots, skip summary table.",
     )
+
     parser.add_argument(
         "--summary-only",
         action="store_true",
         help="Only build Table-8-like summary (SUMMARY_TABLE), skip plots.",
     )
+
     parser.add_argument(
         "--force-download",
         action="store_true",
         help="Force re-download and re-unzip of data",
     )
 
+    # Parse command-line arguments and log which execution mode is selected
     args = parser.parse_args()
     if args.summary_only:
         logging.info("Mode: summary-only")
@@ -94,8 +99,11 @@ def main() -> None:
 
     # Download/unzip when NOT plot-only (covers full + summary-only)
     if not args.plot_only:
+        # If force-download is set OR the ZIP file does not exist, download it
         if args.force_download or not config.ZIP_FILENAME.exists():
             download_data(force=args.force_download)
+        # If force-download is set OR the extracted dataset folder
+        # does not exist, unzip it
         if (
             args.force_download
             or not (config.DATA_DIR / config.DATA_VERSION).exists()
@@ -104,11 +112,17 @@ def main() -> None:
 
     # In summary-only mode, build SUMMARY_TABLE and return early
     if args.summary_only:
+        # Start timer to measure execution time
         t0 = time.perf_counter()
-        # ds is optional because use_grid_area=False by default
+
+        # No NetCDF dataset is needed here (ds=None)
+        # because summary uses CSV input only
+        # Grid-area scaling is disabled by default (use_grid_area=False)
         logging.info("Opening per-glacier CSV files from %s",
                      config.CSV_SUBDIR)
         logging.info("Analyzing CSV data...")
+
+        # Build the regional summary table from CSV inputs
         tbl = build_summary_table(
             Path(config.CSV_SUBDIR),
             ds=None,
@@ -116,7 +130,11 @@ def main() -> None:
             year_end=config.YEAR_END_TABLE,
             use_grid_area=False,
         )
+
+        # Save the summary table to CSV file
         tbl.to_csv(config.SUMMARY_TABLE, index=False)
+
+        # Log file path and elapsed time
         logging.info(
             "Saved summary table to %s. Time taken: %.2f seconds.",
             config.SUMMARY_TABLE,
@@ -132,7 +150,12 @@ def main() -> None:
 
     # Only build SUMMARY_TABLE if not in plot-only mode
     if not args.plot_only:
+        # Start timer to measure how long summary table creation takes
         t0 = time.perf_counter()
+
+        # Build the summary table from per-glacier CSV inputs
+        # Here ds (NetCDF dataset) is passed, allowing
+        # optional grid-area scaling
         tbl = build_summary_table(
             Path(config.CSV_SUBDIR),
             ds=ds,
@@ -140,7 +163,11 @@ def main() -> None:
             year_end=config.YEAR_END_TABLE,
             use_grid_area=False,
         )
+
+        # Write the summary table to CSV file
         tbl.to_csv(config.SUMMARY_TABLE, index=False)
+
+        # Log file path and elapsed time
         logging.info(
             "Saved summary table to %s. Time taken: %.2f seconds.",
             config.SUMMARY_TABLE,
@@ -148,5 +175,6 @@ def main() -> None:
         )
 
 
+# Run the main workflow only when this script is executed directly
 if __name__ == "__main__":
     main()

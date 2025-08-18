@@ -10,12 +10,11 @@
 
 from pathlib import Path
 import logging
-from typing import Optional
 import math
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import pandas as pd
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 from utils_csv import (
     build_regional_timeseries_gt,
     discover_region_codes,
@@ -49,37 +48,48 @@ def plot_global_mass_change(
     Returns:
         None
     """
+    # Ensure required columns exist in the input DataFrame
     if time_col not in df.columns or value_col not in df.columns:
         raise ValueError("Required columns are missing from dataframe.")
 
+    # Convert time and value columns to correct dtypes (datetime, numeric)
     ser_time = pd.to_datetime(df[time_col])
     ser_val = pd.to_numeric(df[value_col])
 
+    # Create a new figure and axis (8x4.8 inches) with constrained layout
     fig, ax = plt.subplots(figsize=(8, 4.8), layout="constrained")
 
+    # Plot the main time series line
     ax.plot(ser_time, ser_val, linewidth=1.8)
 
+    # If uncertainty column is provided, plot ±1σ shading
     if unc_col is not None and unc_col in df.columns:
         ser_unc = pd.to_numeric(df[unc_col])
         lower = ser_val - ser_unc
         upper = ser_val + ser_unc
         ax.fill_between(ser_time, lower, upper, alpha=0.25)
 
+    # Set axis labels
     ax.set_xlabel("Year")
     ax.set_ylabel(y_label)
+    # Optionally add a plot title
     if title:
         ax.set_title(title)
 
-    # Year ticks and formatting
+    # Configure X-axis to show years every 5 years, format as YYYY
     ax.xaxis.set_major_locator(mdates.YearLocator(base=5))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
     ax.tick_params(axis="x", labelrotation=45)
 
+    # Add grid lines for readability
     ax.grid(True, linewidth=0.5, alpha=0.5)
 
+    # Ensure output path has a file extension (.png if missing)
     outp = Path(out_path)
     if outp.suffix == "":
         outp = outp.with_suffix(".png")
+
+    # Save figure as high-resolution PNG and close the figure to free memory
     fig.savefig(outp, dpi=300)
     plt.close(fig)
 
@@ -106,23 +116,27 @@ def plot_regional_grid(
     """
     base_dir = Path(base_dir)
     out_path = Path(out_path)
+
+    # Ensure a .png suffix if none is provided
     if out_path.suffix == "":
         out_path = out_path.with_suffix(".png")
 
+    # Discover region codes from filenames if not provided explicitly
     if region_codes is None:
         region_codes = discover_region_codes(base_dir)
     region_codes = list(region_codes)
     if not region_codes:
         raise ValueError("No region codes found. Check input directory.")
 
-    # Collect series
+    # Collect all per-region time series DataFrames here
     series_list: List[pd.DataFrame] = []
 
-    # helper to test if a subregion series file exists
+    # Helper function to check if a per-region CSV file exists
     def _series_exists(code: str) -> bool:
         p = base_dir / f"{code}_gla_MEAN-CAL-mass-change-series_obs_unobs.csv"
         return p.exists()
 
+    # Loop over all configured regions (ensures correct Fig. 10 order)
     for code in config.REGION_CODE_NUMS.keys():
         try:
             if code == "SAN":  # aggregate SA1/SA2 (and SAN if present)
@@ -141,12 +155,14 @@ def plot_regional_grid(
                     parts.append(df_tmp)
                 if not parts:
                     continue
+                # Combine all SAN-related subregion DataFrames
                 df_r = pd.concat(parts, ignore_index=True)
                 logging.info("SAN aggregated from: %s", ",".join(subs))
             else:
-                # Default: single region
+                # Default case: load time series for a single region
                 df_r = build_regional_timeseries_gt(base_dir, code)
 
+            # Add regional DataFrame to the list
             series_list.append(df_r)
         except FileNotFoundError as exc:
             logging.warning("Skipping %s: %s", code, exc)
@@ -156,13 +172,16 @@ def plot_regional_grid(
     if not series_list:
         raise ValueError("No regional series could be built.")
 
+    # Concatenate all regional series into one DataFrame
     df_all = pd.concat(series_list, ignore_index=True)
 
-    # Layout
+    # Define subplot grid layout based on number of regions
+    # and requested columns
     n = len(config.REGION_CODE_NUMS)
     ncols = max(1, int(ncols))
     nrows = int(math.ceil(n / ncols))
 
+    # Create figure and subplots with constrained layout
     fig, axes = plt.subplots(
         nrows=nrows,
         ncols=ncols,
@@ -171,9 +190,10 @@ def plot_regional_grid(
         squeeze=False,
     )
 
-    # enforce Fig. 10 order
+    # Ensure subplots follow official Fig. 10 regional order
     region_order: List[str] = list(config.REGION_CODE_NUMS.keys())
 
+    # Fill each subplot with the region’s time series
     for i, code in enumerate(region_order, start=1):
         if code not in df_all["region"].unique():
             # If this region has no data (rare), leave axis blank
@@ -181,8 +201,11 @@ def plot_regional_grid(
             axes[r][c].axis("off")
             continue
 
+        # Identify subplot position
         r, c = divmod(i - 1, ncols)
         ax = axes[r][c]
+
+        # Aggregate per-timepoint values: sum mass, propagate uncertainty (RSS)
         dfr = (
             df_all[df_all["region"] == code]
             .groupby("time", as_index=False)
@@ -192,23 +215,33 @@ def plot_regional_grid(
             )
             .sort_values("time")
         )
+        # Extract arrays for plotting
         y = dfr["mass_gt"].to_numpy().astype(float).ravel()
         s = dfr["sigma_gt"].to_numpy().astype(float).ravel()
+
+        # Plot time series line and ±1σ uncertainty shading
         ax.plot(dfr["time"], y, linewidth=1.6)
         ax.fill_between(dfr["time"], y - s, y + s, alpha=0.25)
+
+        # Set subplot title (index + region code)
         ax.set_title(f"{i}: {code}")
+
+        # Configure axis appearance
         ax.grid(True, linewidth=0.5, alpha=0.5)
         ax.xaxis.set_major_locator(mdates.YearLocator(base=5))
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
         ax.tick_params(axis="x", labelrotation=45)
+
+        # Add Y-axis label only for the first column
         if c == 0:
             ax.set_ylabel("Annual mass change (Gt)")
 
-    # Turn off any extra axes (when n not multiple of ncols)
+    # Disable unused subplots (e.g., if regions < grid size)
     total_axes = nrows * ncols
     for j in range(n, total_axes):
         rr, cc = divmod(j, ncols)
         axes[rr][cc].axis("off")
 
+    # Save final multi-panel figure and close
     fig.savefig(out_path, dpi=300)
     plt.close(fig)

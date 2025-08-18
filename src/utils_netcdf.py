@@ -39,6 +39,7 @@ def download_data(force=False):
     # Handle existing ZIP file
     if config.ZIP_FILENAME.exists():
         if force:
+            # Delete the existing ZIP file from disk before re-downloading
             config.ZIP_FILENAME.unlink()
             logging.info("Deleted existing ZIP file due to --force-download.")
         else:
@@ -49,8 +50,10 @@ def download_data(force=False):
     start = time.perf_counter()
     logging.info("Downloading dataset...")
     with requests.get(config.DATA_URL, stream=True) as r:
+        # Raise an HTTPError if the dwnld request fails (non-200 status code)
         r.raise_for_status()
         with open(config.ZIP_FILENAME, 'wb') as f:
+            # Stream the response content in 8 KB chunks and write to ZIP file
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
 
@@ -76,6 +79,7 @@ def unzip_data(force=False):
     if target_dir.exists():
         if force:
             import shutil
+            # Recursively delete existing extracted directory b4 re-extraction
             shutil.rmtree(target_dir)
             logging.info("Deleted existing extracted folder.")
         else:
@@ -86,6 +90,7 @@ def unzip_data(force=False):
     start = time.perf_counter()
     logging.info("Unzipping data...")
     with zipfile.ZipFile(config.ZIP_FILENAME, 'r') as zip_ref:
+        # Extract all files from the ZIP archive into the data directory
         zip_ref.extractall(config.DATA_DIR)
 
     # Report time taken for extraction
@@ -109,15 +114,18 @@ def load_netcdf_file():
     start = time.perf_counter()
 
     # Search for the first .nc4 file in the expected subdirectory
+    # Error handling: catch missing .nc4 files
+    # and raise a clear FileNotFoundError
     try:
         file = next(
             f for f in config.NETCDF_SUBDIR.iterdir() if f.suffix == ".nc4"
         )
+    # If no .nc4 file is found, raise an explicit error
     except StopIteration:
         raise FileNotFoundError("No NetCDF file found in extracted directory.")
 
-    # Open the NetCDF file using xarray
     logging.info(f"Opening NetCDF file: {file}")
+    # Open the NetCDF file using xarray
     ds = xr.open_dataset(file)
 
     # Log the time taken to load the file
@@ -126,11 +134,9 @@ def load_netcdf_file():
     return ds
 
 
-def compute_time_taken(start):
-    elapsed = time.perf_counter() - start
-    logging.info("Time taken: %.2f seconds.", elapsed)
-
-
+# ............................................................................#
+# Step 4: Analyze and plot global/regional diagnostics
+# ............................................................................#
 def analyze_and_plot(ds, plot_only=False, summary_only=False):
     """
     Compute and visualize glacier mass change metrics.
@@ -161,20 +167,37 @@ def analyze_and_plot(ds, plot_only=False, summary_only=False):
     unc_gt = ds["uncertainty_gt"]
     unc_mwe = ds["uncertainty_mwe"]
 
-    # Aggregations
+    # ........................................................................#
+    # Aggregatiions
+    # ........................................................................#
+    # Total global glacier mass change (Gt) by summing over all grid cells
     global_gt = da_gt.sum(dim=["lat", "lon"])
+    # Total glacier area (km²) across all grid cells
     area_sum = da_area.sum(dim=["lat", "lon"])
+    # Area-weighted global mean mass change (m w.e.)
     global_mwe = (da_mwe * da_area).sum(dim=["lat", "lon"]) / area_sum
+    # Global glacier area (km²), same as area_sum
     global_area_km2 = area_sum
 
-    # Uncertainty propagation
+    # ........................................................................#
+    # Uncertainty propagation (±1σ)
+    # ........................................................................#
+    # Propagated global uncertainty in mass change (Gt)
+    # using root-sum-of-squares
     global_unc_gt = (unc_gt ** 2).sum(dim=["lat", "lon"]) ** 0.5
+    # Relative area weights for each grid cell
     weights = da_area / area_sum
+    # Propagated global uncertainty in mean mass change (m w.e.)
+    # using weighted root-sum-of-squares
     global_unc_mwe = ((weights ** 2) * (unc_mwe ** 2)).sum(
         dim=["lat", "lon"]
     ) ** 0.5
 
+    # ........................................................................#
     # Tidy DataFrame
+    # ........................................................................#
+    # Combine all derived variables into a single tidy DataFrame
+    # with clear column names for plotting and export
     df = xr.merge(
         [
             global_gt.rename("global_mass_change_gt"),
@@ -186,22 +209,32 @@ def analyze_and_plot(ds, plot_only=False, summary_only=False):
     ).to_dataframe().reset_index()
 
     if not summary_only:
+        # ....................................................................#
+        # Generate and save the global mass change time series plot
+        # with ±1σ uncertainty
+        # ....................................................................#
         t0 = time.perf_counter()
+
         plot_global_mass_change(
             df, config.PLOT_FILE,
             value_col="global_mass_change_gt",
             unc_col="global_uncertainty_gt",
             y_label="Annual mass change (Gt)"
             )
+
         logging.info("Saved plot to %s. Time taken: %.2f seconds.",
                      config.PLOT_FILE, time.perf_counter() - t0)
 
+        # ....................................................................#
         # Build and save 19-panel figure (auto-discovers region codes)
+        # ....................................................................#
         t0 = time.perf_counter()
+
         plot_regional_grid(
             base_dir=Path(config.CSV_SUBDIR),
             out_path=Path(config.PLOT_FILE_INDIVIDUAL),
             ncols=4,
             )
+
         logging.info("Saved plot to %s. Time taken: %.2f seconds.",
                      config.PLOT_FILE_INDIVIDUAL, time.perf_counter() - t0)
